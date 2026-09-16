@@ -23,6 +23,7 @@ Builds:
     subdir: app
     gradle:
       - yes
+    ndk: r28c
     gradleprops:
       - abiFilter=armeabi-v7a
 
@@ -32,6 +33,7 @@ Builds:
     subdir: app
     gradle:
       - yes
+    ndk: r28c
     gradleprops:
       - abiFilter=arm64-v8a
 
@@ -41,6 +43,7 @@ Builds:
     subdir: app
     gradle:
       - yes
+    ndk: r28c
     gradleprops:
       - abiFilter=x86
 
@@ -50,6 +53,7 @@ Builds:
     subdir: app
     gradle:
       - yes
+    ndk: r28c
     gradleprops:
       - abiFilter=x86_64
 
