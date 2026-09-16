@@ -1,7 +1,7 @@
 AntiFeatures:
   NonFreeNet:
-    en-US: "Dataset refresh contacts raw.githubusercontent.com (GitHub). Map tiles
-      are served by tiles.openfreemap.org.\n"
+    en-US: Dataset refresh contacts raw.githubusercontent.com (GitHub). Map tiles
+      are served by tiles.openfreemap.org.
 Categories:
   - Navigation
 License: MIT
