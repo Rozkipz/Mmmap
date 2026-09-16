@@ -15,6 +15,11 @@ on:
         description: 'Version to verify (must already be published as a GitHub Release, e.g. 1.4)'
         required: true
         type: string
+      reproducible:
+        description: 'Also run `fdroid build` and diff against the published APK (slow, ~40min)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   verify:
@@ -95,14 +100,54 @@ jobs:
             exit 1
           fi
 
-      # Note: we don't run `fdroid build` here. F-Droid's CI runs that build
-      # inside a full vagrant-user / gradlew-fdroid / sysctl-tuned setup that
-      # is impractical to replicate in GH Actions. Reproducible-build is
-      # verified locally on macOS via `fdroid build` with our exact NDK
-      # (see fdroid/SUBMISSION.md), and F-Droid's CI runs the real build on
-      # their MR pipeline. What we verify here is everything *else* their
-      # CI checks — schema, lint, rewritemeta, checkupdates, scanner — so
-      # those failures surface before pushing to the MR.
+      # ── Jobs below call fdroiddata's own tools/ scripts from the clone above,
+      # ── so they track upstream instead of drifting from a local reimplementation.
+
+      - name: git redirect (URLs must be direct, not redirects)
+        working-directory: fdroiddata
+        run: |
+          # Catches e.g. a repo rename leaving Repo:/SourceCode: pointing at a redirect.
+          tools/rewrite-git-redirects.py "$CHANGED"
+          if ! git --no-pager diff --exit-code metadata/${CHANGED}.yml; then
+            echo "::error::git URLs should be direct, not redirects. See diff above."
+            exit 1
+          fi
+
+      - name: tools check scripts
+        working-directory: fdroiddata
+        run: |
+          apt-get install -y --no-install-recommends exiftool jq
+          EXITVALUE=0
+          for s in check-exif-in-images.sh check-localized-metadata.py \
+                   check-keyalias-collision.py check-metadata-summary-whitespace.py \
+                   check-for-unattached-signatures.py make-summary-translatable.py; do
+            if ./tools/$s; then echo "ok   $s"; else echo "::error::$s failed"; EXITVALUE=1; fi
+          done
+          exit $EXITVALUE
+
+      - name: check source code (validates OUR fastlane metadata)
+        working-directory: fdroiddata
+        run: |
+          # checkupdates above already cloned the app source into build/$CHANGED.
+          python3 -m pip install --quiet --break-system-packages markdown-it-py
+          tools/check-fastlane.py "$CHANGED" | tee /tmp/fastlane.json
+          # Anything above "info" is a finding F-Droid's reviewers will see.
+          python3 - <<'PY'
+          import json, sys
+          bad = [r for r in json.load(open('/tmp/fastlane.json'))
+                 if r.get('severity') != 'info']
+          for r in bad:
+              print(f"::error::fastlane [{r['severity']}] {r['description']}")
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: audit-gradle
+        working-directory: fdroiddata
+        run: tools/audit-gradle.py "$CHANGED"
+
+      # `fdroid build` itself runs in the separate `reproducible` job below —
+      # it needs the vagrant-user setup and several GB of NDK, so it is kept
+      # off this fast metadata job.
 
       - name: fdroid scanner (check apk — signing blocks, known non-free, etc.)
         working-directory: fdroiddata
@@ -119,9 +164,127 @@ jobs:
               -o "tmp/binaries/${CHANGED}_${VCODE}.binary.apk"
           done
           set -o pipefail
-          fdroid scanner "$CHANGED" 2>&1 | tee /tmp/scan.log
-          if grep -qE "^ERROR |Scanner found [1-9]" /tmp/scan.log; then
-            echo "::error::F-Droid scanner flagged the APK:"
-            grep -E "^ERROR |Scanner found|Problem:|CRITICAL" /tmp/scan.log
-            exit 1
-          fi
+          # One scanner run per APK, as fdroiddata's own `check apk` job does.
+          # --exit-code makes the scanner's own verdict authoritative; the grep
+          # afterwards just surfaces *why* it failed in the log.
+          EXITVALUE=0
+          for apk in tmp/binaries/*.apk; do
+            fdroid scanner --verbose --exit-code "$apk" 2>&1 | tee /tmp/scan.log || {
+              echo "::error::F-Droid scanner flagged $(basename "$apk"):"
+              grep -E "^ERROR |Scanner found|Problem:|CRITICAL|Dependency metadata" /tmp/scan.log || true
+              EXITVALUE=1
+            }
+          done
+          exit $EXITVALUE
+
+      - name: check apk (manifest flags + signing key)
+        working-directory: fdroiddata
+        run: |
+          # Mirrors the manifest/signing assertions in fdroiddata's `check apk` job.
+          EXITVALUE=0
+          for apk in tmp/binaries/*.apk; do
+            echo "── $(basename "$apk")"
+            androguard axml "$apk" -o /tmp/AndroidManifest.xml
+            for flag in usesCleartextTraffic debuggable testOnly; do
+              if grep -q "android:${flag}=\"true\"" /tmp/AndroidManifest.xml; then
+                echo "::error::$(basename "$apk") has android:${flag}=\"true\""
+                EXITVALUE=1
+              fi
+            done
+            dn=$(apksigner verify --print-certs "$apk" | sed -n -E 's/.*certificate DN: (.*)/\1/p' | head -1)
+            echo "   signing DN: $dn"
+            if [ "$dn" = "C=US, O=Android, CN=Android Debug" ]; then
+              echo "::error::$(basename "$apk") is signed with the Android debug key"
+              EXITVALUE=1
+            fi
+          done
+          exit $EXITVALUE
+
+  # The check neither we nor the metadata job can otherwise prove: that F-Droid's
+  # builder reproduces our published APK byte-for-byte. With `Binaries:` set,
+  # `fdroid build` downloads the released APK and diffs it against its own output,
+  # so a mismatch fails here instead of on the MR. Mirrors fdroiddata's
+  # `fdroid build` job, including running as the `vagrant` user.
+  reproducible:
+    if: inputs.reproducible
+    runs-on: ubuntu-latest
+    container:
+      image: registry.gitlab.com/fdroid/fdroidserver:buildserver-trixie
+    env:
+      ANDROID_HOME: /opt/android-sdk
+      serverwebroot: /tmp
+      gpghome: /tmp
+      keystore: /tmp
+      keystorepass: x
+      keypass: x
+      CHANGED: app.mmmap
+
+    steps:
+      - name: Free disk space (NDKs are large)
+        run: |
+          rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk 2>/dev/null || true
+          df -h /
+
+      - uses: actions/checkout@v6
+        with:
+          path: mmmap
+
+      - name: Clone fdroiddata + overlay metadata
+        run: |
+          git clone --depth=1 https://gitlab.com/fdroid/fdroiddata.git
+          cp mmmap/fdroid/app.mmmap.yml fdroiddata/metadata/app.mmmap.yml
+          chown -R "$(whoami)" fdroiddata
+
+      - name: Install fdroidserver master
+        run: |
+          mkdir -p /fdroidserver
+          curl -sSfL https://gitlab.com/fdroid/fdroidserver/-/archive/master/fdroidserver-master.tar.gz \
+            | tar -xz --directory=/fdroidserver --strip-components=1
+          echo "/fdroidserver" >> "$GITHUB_PATH"
+          echo "PYTHONPATH=/fdroidserver:/fdroidserver/examples" >> "$GITHUB_ENV"
+          echo "PYTHONUNBUFFERED=true" >> "$GITHUB_ENV"
+
+      - name: Build every ABI and compare against the published APK
+        working-directory: fdroiddata
+        run: |
+          set -eu
+          source /etc/profile.d/bsenv.sh
+          sdkmanager "platform-tools" "build-tools;31.0.0" > /dev/null
+          git -C "$home_vagrant/gradlew-fdroid" pull --quiet || true
+          apt-get update -qq && apt-get install -y -qq sudo openjdk-21-jdk-headless
+          update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java
+          sysctl fs.inotify.max_user_watches=524288 || true
+
+          for d in logs tmp unsigned build "$home_vagrant/.android" "$home_vagrant/.gradle" "$home_vagrant/metadata"; do
+            mkdir -p "$d"; chown -R vagrant "$d"
+          done
+          cp -R metadata/${CHANGED}.yml "$home_vagrant/metadata"
+          ln -sf "$PWD/tmp" "$home_vagrant/tmp"
+          chown -R vagrant "$PWD" "$home_vagrant"
+          export GRADLE_USER_HOME=$home_vagrant/.gradle
+
+          # Every versionCode in the recipe — i.e. all four ABIs.
+          for VCODE in $(grep -E '^\s+versionCode:\s+[0-9]+' metadata/${CHANGED}.yml | awk '{print $2}'); do
+            echo "::group::fdroid build ${CHANGED}:${VCODE}"
+            ( cd "$home_vagrant" && \
+              sudo --preserve-env --user vagrant \
+                env PATH=/fdroidserver:$PATH \
+                    PYTHONPATH=/fdroidserver:/fdroidserver/examples \
+                    PYTHONUNBUFFERED=true HOME=$home_vagrant \
+                fdroid build --verbose --test --refresh-scanner --on-server --no-tarball \
+                  "${CHANGED}:${VCODE}" )
+            echo "::endgroup::"
+          done
+
+          # `fdroid build` writes the verified binary here only when its own output
+          # matched the published APK; its absence means reproducibility failed.
+          MISSING=0
+          for VCODE in $(grep -E '^\s+versionCode:\s+[0-9]+' metadata/${CHANGED}.yml | awk '{print $2}'); do
+            if [ -e "tmp/binaries/${CHANGED}_${VCODE}.binary.apk" ]; then
+              echo "reproducible ✔ ${VCODE}"
+            else
+              echo "::error::${CHANGED}:${VCODE} did NOT reproduce the published APK"
+              MISSING=1
+            fi
+          done
+          exit $MISSING
