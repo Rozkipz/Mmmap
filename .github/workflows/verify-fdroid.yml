@@ -246,6 +246,9 @@ jobs:
 
       - name: Build every ABI and compare against the published APK
         working-directory: fdroiddata
+        # The image's default shell is sh; bsenv.sh needs bash (and so does
+        # `source`), otherwise this exits 127 before any build starts.
+        shell: bash
         run: |
           set -eu
           source /etc/profile.d/bsenv.sh
