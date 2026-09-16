@@ -282,6 +282,10 @@ jobs:
                     PYTHONUNBUFFERED=true HOME=$home_vagrant \
                 fdroid "$@"
             }
+            # `fdroid build --on-server` uninstalls sudo as it exits, so every
+            # iteration after the first has to put it back before using it again.
+            # fdroiddata's own CI does the same, once per build.
+            apt-get install -y -qq sudo
             (
               cd "$home_vagrant"
               # fetchsrclibs clones the app into build/<appid>. Without it the
