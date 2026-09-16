@@ -313,3 +313,17 @@ jobs:
             fi
           done
           exit $MISSING
+
+      # On a mismatch, `fdroid build` keeps its own output as tmp/<appid>_<vc>.apk.
+      # Publishing it is what makes the failure diagnosable: unzip both it and the
+      # released APK and diff the offending file directly.
+      - name: Upload fdroid's build output (for diffing against the release)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fdroid-build-output
+          path: |
+            fdroiddata/tmp/
+            fdroiddata/logs/
+          retention-days: 7
+          if-no-files-found: warn
