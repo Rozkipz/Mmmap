@@ -258,24 +258,46 @@ jobs:
           update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java
           sysctl fs.inotify.max_user_watches=524288 || true
 
-          for d in logs tmp unsigned build "$home_vagrant/.android" "$home_vagrant/.gradle" "$home_vagrant/metadata"; do
+          # fdroid resolves build/, logs/, tmp/ and metadata/ relative to its cwd,
+          # and we run it from $home_vagrant — so those have to exist there, not
+          # just in the fdroiddata checkout. tmp/ is a symlink back into
+          # fdroiddata so the verified binaries land where the check below looks.
+          for d in logs tmp unsigned build "$home_vagrant/.android" "$home_vagrant/.gradle" \
+                   "$home_vagrant/metadata" "$home_vagrant/build" "$home_vagrant/logs" \
+                   "$home_vagrant/unsigned"; do
             mkdir -p "$d"; chown -R vagrant "$d"
           done
           cp -R metadata/${CHANGED}.yml "$home_vagrant/metadata"
-          ln -sf "$PWD/tmp" "$home_vagrant/tmp"
+          ln -sfn "$PWD/tmp" "$home_vagrant/tmp"
           chown -R vagrant "$PWD" "$home_vagrant"
           export GRADLE_USER_HOME=$home_vagrant/.gradle
 
           # Every versionCode in the recipe — i.e. all four ABIs.
           for VCODE in $(grep -E '^\s+versionCode:\s+[0-9]+' metadata/${CHANGED}.yml | awk '{print $2}'); do
             echo "::group::fdroid build ${CHANGED}:${VCODE}"
-            ( cd "$home_vagrant" && \
+            fdroid_as_vagrant() {
               sudo --preserve-env --user vagrant \
                 env PATH=/fdroidserver:$PATH \
                     PYTHONPATH=/fdroidserver:/fdroidserver/examples \
                     PYTHONUNBUFFERED=true HOME=$home_vagrant \
-                fdroid build --verbose --test --refresh-scanner --on-server --no-tarball \
-                  "${CHANGED}:${VCODE}" )
+                fdroid "$@"
+            }
+            (
+              cd "$home_vagrant"
+              # fetchsrclibs clones the app into build/<appid>. Without it the
+              # build dir is missing and SOURCE_DATE_EPOCH resolves to None,
+              # which blows up in set_FDroidPopen_env. It needs to see
+              # fdroiddata, hence the symlink, which is removed straight after
+              # (as fdroiddata's own CI does).
+              ln -sfn "$GITHUB_WORKSPACE/fdroiddata" "$home_vagrant/fdroiddata"
+              fdroid_as_vagrant fetchsrclibs "${CHANGED}:${VCODE}" --verbose
+              rm -f "$home_vagrant/fdroiddata"
+              # `unset CI` matches their runner: some gradle builds change
+              # behaviour when CI is set, which would defeat reproducibility.
+              unset CI
+              fdroid_as_vagrant build --verbose --test --refresh-scanner \
+                --on-server --no-tarball "${CHANGED}:${VCODE}"
+            )
             echo "::endgroup::"
           done
 
