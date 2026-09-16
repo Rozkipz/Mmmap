@@ -82,6 +82,23 @@ jobs:
         working-directory: fdroiddata
         run: fdroid lint "$CHANGED"
 
+      - name: every build block must pin ndk
+        working-directory: fdroiddata
+        run: |
+          # Without `ndk:`, F-Droid provisions no NDK, AGP silently skips stripping
+          # the prebuilt .so files that ship inside AARs, and the build stops
+          # reproducing. This already regressed once: ndk r28c was pinned in
+          # 7cded41, then dropped by 03b8190 when Builds was split into four ABI
+          # blocks — which is what broke reproducibility for v1.5. Catch it here
+          # in two minutes rather than in the 25-minute reproducible job.
+          blocks=$(grep -c '^    versionCode:' metadata/${CHANGED}.yml)
+          ndks=$(grep -c '^    ndk:' metadata/${CHANGED}.yml)
+          echo "build blocks: $blocks   ndk pins: $ndks"
+          [ "$blocks" = "$ndks" ] || {
+            echo "::error::every build block needs an ndk: pin — only $ndks of $blocks have one"
+            exit 1
+          }
+
       - name: fdroid rewritemeta (must be a no-op)
         working-directory: fdroiddata
         run: |
