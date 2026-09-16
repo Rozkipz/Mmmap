@@ -1,10 +1,7 @@
 package app.mmmap.ui.detail
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -159,33 +156,33 @@ class RestaurantSheetUiTest {
             .assertIsDisplayed()
     }
 
-    // --- "I've been here" toggle ---
+    // --- visited toggle ---
+    // The action row's ✓/✗ IconButton; it carries no text label, and it is an
+    // IconButton rather than a toggleable, so state shows through the content
+    // description flipping between these two strings.
 
-    @Test fun beenHereCheckbox_displayed() {
+    @Test fun visitedToggle_displayed() {
         compose.setContent {
             RestaurantSheetContent(restaurant(), onDismiss = {})
         }
-        compose.onNodeWithText("I've been here").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Mark as visited").performScrollTo().assertIsDisplayed()
     }
 
-    @Test fun beenHereCheckbox_uncheckedWhenNotVisited() {
+    @Test fun visitedToggle_showsMarkAction_whenNotVisited() {
         compose.setContent {
             RestaurantSheetContent(restaurant(), onDismiss = {}, isVisited = false)
         }
-        // The Checkbox node itself is the toggleable element
-        compose.onNodeWithText("I've been here").performScrollTo()
-        compose.onNode(isToggleable()).assertIsOff()
+        compose.onNodeWithContentDescription("Mark as visited").performScrollTo().assertIsDisplayed()
     }
 
-    @Test fun beenHereCheckbox_checkedWhenVisited() {
+    @Test fun visitedToggle_showsRemoveAction_whenVisited() {
         compose.setContent {
             RestaurantSheetContent(restaurant(), onDismiss = {}, isVisited = true)
         }
-        compose.onNodeWithText("I've been here").performScrollTo()
-        compose.onNode(isToggleable()).assertIsOn()
+        compose.onNodeWithContentDescription("Remove visited mark").performScrollTo().assertIsDisplayed()
     }
 
-    @Test fun beenHereCheckbox_clickFiresCallback() {
+    @Test fun visitedToggle_clickFiresCallback() {
         var callbackValue: Boolean? = null
         compose.setContent {
             RestaurantSheetContent(
@@ -193,11 +190,11 @@ class RestaurantSheetUiTest {
                 isVisited = false, onVisitedChange = { callbackValue = it },
             )
         }
-        compose.onNodeWithText("I've been here").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Mark as visited").performScrollTo().performClick()
         assertEquals(true, callbackValue)
     }
 
-    @Test fun beenHereCheckbox_clickWhenVisited_firesWithFalse() {
+    @Test fun visitedToggle_clickWhenVisited_firesWithFalse() {
         var callbackValue: Boolean? = null
         compose.setContent {
             RestaurantSheetContent(
@@ -205,7 +202,7 @@ class RestaurantSheetUiTest {
                 isVisited = true, onVisitedChange = { callbackValue = it },
             )
         }
-        compose.onNodeWithText("I've been here").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Remove visited mark").performScrollTo().performClick()
         assertEquals(false, callbackValue)
     }
 
