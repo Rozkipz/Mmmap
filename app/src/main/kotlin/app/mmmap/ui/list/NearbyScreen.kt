@@ -58,6 +58,22 @@ fun NearbyScreen(
             }
             return@Scaffold
         }
+        // The guide covers a limited set of regions, so "nothing within ~55km" is the
+        // normal case for most of the world — without this it renders as a blank page
+        // that looks broken.
+        if (nearby.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "No MICHELIN Guide restaurants near you. Pan the map to explore other areas.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            return@Scaffold
+        }
         LazyColumn(contentPadding = padding) {
             items(nearby, key = { it.first.id }) { (restaurant, distanceKm) ->
                 NearbyRow(
