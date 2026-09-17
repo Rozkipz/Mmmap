@@ -10,6 +10,7 @@ import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.CancellationSignal
+import android.os.Bundle
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -311,6 +312,11 @@ class MapViewModel @Inject constructor(
                 }
                 override fun onProviderDisabled(p: String) {}
                 override fun onProviderEnabled(p: String) {}
+                // Deprecated, and defaulted from API 29 — but still abstract on API 26-28,
+                // where the framework calls it and an unimplemented one throws
+                // AbstractMethodError, killing the app the moment a fix arrives.
+                @Deprecated("Deprecated in API 29; required on API 26-28")
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
             }
             pendingLocationListener = listener
             enabledProviders.forEach { provider ->
