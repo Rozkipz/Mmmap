@@ -11,6 +11,14 @@
   up from 19,036)
 - Add a weekly `Refresh dataset` workflow that regenerates and gzips the bundled data
   when upstream changes, and opens a PR
+- Fix the app dying on launch with `No Vulkan compatible GPU found` on any device without
+  Vulkan. It is optional below API 29, so every Android 8/9 device could install a build
+  that could not start. Switched to MapLibre's OpenGL ES variant, which all supported
+  devices have
+- Fix an `AbstractMethodError` crash on the first location update on API 26-28, where
+  `LocationListener.onStatusChanged` is still abstract rather than defaulted
+- Fix Near Me rendering a blank page when nothing is within range, which is the normal
+  case outside the regions the guide covers
 
 ## [1.5]
 
