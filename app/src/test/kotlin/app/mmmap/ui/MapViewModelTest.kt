@@ -21,6 +21,7 @@ import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -102,6 +103,52 @@ class MapViewModelTest {
         val bounds = MapBounds(1.0, 2.0, 3.0, 4.0)
         vm.updateBounds(bounds)
         assertEquals(bounds, vm.bounds.value)
+    }
+
+    @Test fun boundsAreWidenedBeforeQuerySoEdgeCirclesSurvive() = runTest {
+        // A restaurant whose centre is just off-screen still paints part of its circle at
+        // the edge of the viewport. Querying the exact visible region drops it and leaves a
+        // gap all round, so the query box has to be wider than the camera.
+        val minLat = slot<Double>()
+        val maxLat = slot<Double>()
+        val minLon = slot<Double>()
+        val maxLon = slot<Double>()
+        every {
+            repo.observeInBounds(
+                capture(minLat), capture(maxLat), capture(minLon), capture(maxLon),
+                any(), any(), any(),
+            )
+        } returns flowOf(emptyList())
+
+        val job = vm.restaurants.launchIn(this)
+        vm.updateBounds(MapBounds(minLat = 50.0, maxLat = 52.0, minLon = -1.0, maxLon = 1.0))
+        advanceUntilIdle()
+
+        assertEquals(49.8, minLat.captured, 1e-9)
+        assertEquals(52.2, maxLat.captured, 1e-9)
+        assertEquals(-1.2, minLon.captured, 1e-9)
+        assertEquals(1.2, maxLon.captured, 1e-9)
+        job.cancel()
+    }
+
+    @Test fun paddingIsAFractionOfSpanSoItIsConstantInPixels() {
+        // Zoomed right in, the same 10% is a far smaller number of degrees.
+        val street = MapBounds(
+            minLat = 51.5000, maxLat = 51.5020, minLon = -0.1290, maxLon = -0.1270,
+        ).padded(0.1)
+        assertEquals(51.4998, street.minLat, 1e-9)
+        assertEquals(51.5022, street.maxLat, 1e-9)
+        assertEquals(-0.1292, street.minLon, 1e-9)
+        assertEquals(-0.1268, street.maxLon, 1e-9)
+    }
+
+    @Test fun paddingNeverLeavesTheValidCoordinateRange() {
+        val world = MapBounds(minLat = -85.0, maxLat = 85.0, minLon = -175.0, maxLon = 175.0)
+            .padded(0.5)
+        assertEquals(-90.0, world.minLat, 0.0)
+        assertEquals(90.0, world.maxLat, 0.0)
+        assertEquals(-180.0, world.minLon, 0.0)
+        assertEquals(180.0, world.maxLon, 0.0)
     }
 
     @Test fun updateFiltersSetsValue() {

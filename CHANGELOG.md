@@ -19,6 +19,10 @@
   `LocationListener.onStatusChanged` is still abstract rather than defaulted
 - Fix Near Me rendering a blank page when nothing is within range, which is the normal
   case outside the regions the guide covers
+- Fix restaurants missing from the edges of the map. The viewport was queried as an exact
+  box, so a restaurant whose centre fell just outside it was dropped even though its
+  circle overlapped the screen. The query box is now wider than the camera, which also
+  means a short pan lands on pins that are already loaded
 
 ## [1.5]
 

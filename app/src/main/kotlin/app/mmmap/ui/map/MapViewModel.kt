@@ -46,14 +46,46 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import kotlin.math.abs
 
 private const val LOCATE_TIMEOUT_MS = 60_000L
+
+// Restaurants are drawn as circles — 9-14px by award, and 26px for the visited glow — so
+// one whose centre sits just outside the viewport still owes the edge of the screen a
+// sliver of ink. Querying the exact visible region drops those rows, and the circles are
+// simply missing along all four edges until you pan far enough to bring the centre into
+// view. Query a slightly larger box than the camera shows so they stay in the source.
+// A tenth of the span is several times the widest circle on the narrowest axis, and it
+// also means a short pan lands on restaurants that are already loaded.
+private const val VIEWPORT_QUERY_MARGIN = 0.1
 private val PrettyJson = Json { prettyPrint = true }
 
 data class MapBounds(
     val minLat: Double, val maxLat: Double,
     val minLon: Double, val maxLon: Double,
-)
+) {
+    /**
+     * This box grown by [fraction] of its own span on all four sides, clamped to the
+     * valid coordinate range.
+     *
+     * A fraction of the span, rather than a fixed number of degrees, is what makes the
+     * margin a constant slice of the screen at every zoom level: the span a viewport
+     * covers is proportional to its pixel size over 2^zoom, so a tenth of the span is a
+     * tenth of the screen whether you are looking at a street or a continent.
+     */
+    fun padded(fraction: Double): MapBounds {
+        // abs, so a box that arrives inverted — a west > east pair across the antimeridian,
+        // say — is never quietly shrunk instead of grown.
+        val latMargin = abs(maxLat - minLat) * fraction
+        val lonMargin = abs(maxLon - minLon) * fraction
+        return MapBounds(
+            minLat = (minLat - latMargin).coerceAtLeast(-90.0),
+            maxLat = (maxLat + latMargin).coerceAtMost(90.0),
+            minLon = (minLon - lonMargin).coerceAtLeast(-180.0),
+            maxLon = (maxLon + lonMargin).coerceAtMost(180.0),
+        )
+    }
+}
 
 enum class VisitedFilter { VISITED_ONLY, UNVISITED_ONLY }
 
@@ -98,10 +130,11 @@ class MapViewModel @Inject constructor(
     val restaurants: StateFlow<List<Restaurant>> = combine(bounds, filters) { b, f -> b to f }
         .flatMapLatest { (b, f) ->
             if (b == null) return@flatMapLatest kotlinx.coroutines.flow.flowOf(emptyList<Restaurant>())
+            val q = b.padded(VIEWPORT_QUERY_MARGIN)
             combine(
                 repo.observeInBounds(
-                    minLat = b.minLat, maxLat = b.maxLat,
-                    minLon = b.minLon, maxLon = b.maxLon,
+                    minLat = q.minLat, maxLat = q.maxLat,
+                    minLon = q.minLon, maxLon = q.maxLon,
                     distinctions = f.distinctions,
                     cuisines = f.cuisines,
                     priceTiers = f.priceTiers,
