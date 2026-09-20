@@ -105,10 +105,12 @@ class MapViewModelTest {
         assertEquals(bounds, vm.bounds.value)
     }
 
-    @Test fun boundsAreWidenedBeforeQuerySoEdgeCirclesSurvive() = runTest {
-        // A restaurant whose centre is just off-screen still paints part of its circle at
-        // the edge of the viewport. Querying the exact visible region drops it and leaves a
-        // gap all round, so the query box has to be wider than the camera.
+    @Test fun queryBoxClearsTheCameraByAtLeastTheWidestCircle() = runTest {
+        // The requirement, not the constant: the widest mark drawn is the 26px visited glow
+        // (MapScreen.addCustomLayers), so on a ~1080px viewport the query box must reach at
+        // least 26/1080 of the span past every edge or that glow is clipped. Retuning
+        // VIEWPORT_QUERY_MARGIN must leave this green; shrinking it towards zero must not.
+        val requiredFraction = 26.0 / 1080.0
         val minLat = slot<Double>()
         val maxLat = slot<Double>()
         val minLon = slot<Double>()
@@ -124,22 +126,49 @@ class MapViewModelTest {
         vm.updateBounds(MapBounds(minLat = 50.0, maxLat = 52.0, minLon = -1.0, maxLon = 1.0))
         advanceUntilIdle()
 
-        assertEquals(49.8, minLat.captured, 1e-9)
-        assertEquals(52.2, maxLat.captured, 1e-9)
-        assertEquals(-1.2, minLon.captured, 1e-9)
-        assertEquals(1.2, maxLon.captured, 1e-9)
+        val south = 50.0 - minLat.captured
+        val north = maxLat.captured - 52.0
+        val west = -1.0 - minLon.captured
+        val east = maxLon.captured - 1.0
+        assertTrue("south margin $south of a 2.0 span", south / 2.0 >= requiredFraction)
+        assertTrue("north margin $north of a 2.0 span", north / 2.0 >= requiredFraction)
+        assertTrue("west margin $west of a 2.0 span", west / 2.0 >= requiredFraction)
+        assertTrue("east margin $east of a 2.0 span", east / 2.0 >= requiredFraction)
+        assertEquals("a lopsided box would clip one edge", south, north, 1e-9)
+        assertEquals("a lopsided box would clip one edge", west, east, 1e-9)
         job.cancel()
     }
 
     @Test fun paddingIsAFractionOfSpanSoItIsConstantInPixels() {
-        // Zoomed right in, the same 10% is a far smaller number of degrees.
-        val street = MapBounds(
-            minLat = 51.5000, maxLat = 51.5020, minLon = -0.1290, maxLon = -0.1270,
-        ).padded(0.1)
-        assertEquals(51.4998, street.minLat, 1e-9)
-        assertEquals(51.5022, street.maxLat, 1e-9)
-        assertEquals(-0.1292, street.minLon, 1e-9)
-        assertEquals(-0.1268, street.maxLon, 1e-9)
+        // The name's claim is about two zoom levels, so the test has to compare two. A
+        // padded() that added a fixed number of degrees would satisfy either box alone.
+        fun marginRatio(b: MapBounds) = (b.padded(0.1).maxLat - b.maxLat) / (b.maxLat - b.minLat)
+
+        val street = MapBounds(minLat = 51.5000, maxLat = 51.5020, minLon = -0.1290, maxLon = -0.1270)
+        val continent = MapBounds(minLat = 35.0, maxLat = 55.0, minLon = -10.0, maxLon = 10.0)
+
+        // Spans differ by 10 000x; the margin stays the same slice of the screen...
+        assertEquals(marginRatio(street), marginRatio(continent), 1e-9)
+        // ...which means far fewer degrees when zoomed in.
+        assertTrue(
+            street.padded(0.1).maxLat - street.maxLat <
+                continent.padded(0.1).maxLat - continent.maxLat
+        )
+    }
+
+    @Test fun paddingLeavesABoxThatNeedsNoClampingAlone() {
+        val padded = MapBounds(minLat = 50.0, maxLat = 52.0, minLon = -1.0, maxLon = 1.0).padded(0.1)
+        assertTrue(padded.minLat > -90.0 && padded.maxLat < 90.0)
+        assertTrue(padded.minLon > -180.0 && padded.maxLon < 180.0)
+    }
+
+    @Test fun paddingGrowsAnInvertedBoxRatherThanShrinkingIt() {
+        // padded() uses abs specifically so a west > east pair across the antimeridian is
+        // not quietly narrowed. Nothing pinned that.
+        val inverted = MapBounds(minLat = 50.0, maxLat = 52.0, minLon = 179.0, maxLon = -179.0)
+        val padded = inverted.padded(0.1)
+        assertTrue("west edge moved the wrong way", padded.minLon < 179.0)
+        assertTrue("east edge moved the wrong way", padded.maxLon > -179.0)
     }
 
     @Test fun paddingNeverLeavesTheValidCoordinateRange() {
@@ -199,7 +228,7 @@ class MapViewModelTest {
         vm.updateFilters(MapFilters(distinctions = setOf(Distinction.ONE_STAR)))
         advanceUntilIdle()
 
-        verify { repo.observeInBounds(50.0, 52.0, -1.0, 1.0, setOf(Distinction.ONE_STAR), null, null) }
+        verify { repo.observeInBounds(any(), any(), any(), any(), setOf(Distinction.ONE_STAR), null, null) }
         job.cancel()
     }
 
@@ -210,7 +239,7 @@ class MapViewModelTest {
         vm.updateFilters(MapFilters(cuisines = setOf("French")))
         advanceUntilIdle()
 
-        verify { repo.observeInBounds(50.0, 52.0, -1.0, 1.0, null, setOf("French"), null) }
+        verify { repo.observeInBounds(any(), any(), any(), any(), null, setOf("French"), null) }
         job.cancel()
     }
 
@@ -221,7 +250,7 @@ class MapViewModelTest {
         vm.updateFilters(MapFilters(priceTiers = setOf(2, 3)))
         advanceUntilIdle()
 
-        verify { repo.observeInBounds(50.0, 52.0, -1.0, 1.0, null, null, setOf(2, 3)) }
+        verify { repo.observeInBounds(any(), any(), any(), any(), null, null, setOf(2, 3)) }
         job.cancel()
     }
 

@@ -106,18 +106,28 @@ class NearbyViewModelTest {
         val lon = -21.94
         every { locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) } returns
             fakeLocation(lat, lon)
+        val minLat = slot<Double>()
         val maxLat = slot<Double>()
+        val minLon = slot<Double>()
         val maxLon = slot<Double>()
         every {
-            repo.observeInBounds(any(), capture(maxLat), any(), capture(maxLon), any(), any(), any())
+            repo.observeInBounds(
+                capture(minLat), capture(maxLat), capture(minLon), capture(maxLon),
+                any(), any(), any(),
+            )
         } returns flowOf(emptyList())
 
         vm.load()
         advanceUntilIdle()
 
+        // All four reaches, so padding only the positive side cannot pass.
         val northKm = haversineKm(lat, lon, maxLat.captured, lon).toDouble()
+        val southKm = haversineKm(lat, lon, minLat.captured, lon).toDouble()
         val eastKm = haversineKm(lat, lon, lat, maxLon.captured).toDouble()
+        val westKm = haversineKm(lat, lon, lat, minLon.captured).toDouble()
         assertEquals("east reach $eastKm km vs north reach $northKm km", northKm, eastKm, 0.5)
+        assertEquals("west reach $westKm km vs north reach $northKm km", northKm, westKm, 0.5)
+        assertEquals("south reach $southKm km vs north reach $northKm km", northKm, southKm, 0.5)
     }
 
     @Test fun boxStaysWithinValidCoordinatesNearThePole() = runTest {
@@ -137,10 +147,12 @@ class NearbyViewModelTest {
         vm.load()
         advanceUntilIdle()
 
-        assertTrue("minLat ${minLat.captured}", minLat.captured >= -90.0)
-        assertTrue("maxLat ${maxLat.captured}", maxLat.captured <= 90.0)
-        assertTrue("minLon ${minLon.captured}", minLon.captured >= -180.0)
-        assertTrue("maxLon ${maxLon.captured}", maxLon.captured <= 180.0)
+        // Clamped AND still usable: a box collapsed to a point would satisfy bare
+        // inequalities while returning nothing.
+        assertEquals("clamped at the pole", 90.0, maxLat.captured, 0.0)
+        assertTrue("box must still contain the user", minLat.captured < 89.9)
+        assertEquals("at the pole the box spans every meridian", -180.0, minLon.captured, 0.0)
+        assertEquals("at the pole the box spans every meridian", 180.0, maxLon.captured, 0.0)
     }
 
     @Test fun withLocation_nearbyPopulated() = runTest {
