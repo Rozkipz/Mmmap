@@ -62,6 +62,48 @@ DI: Hilt throughout. `@HiltViewModel` on all ViewModels.
 
 **Room gotcha** — do NOT pre-create `room_master_table` in the bundled SQLite. Room creates it on first open; a pre-existing table (even empty) triggers destructive migration and wipes data.
 
+## Changes are test-driven
+
+Write the failing test first, run it, and confirm it fails **for the reason you think**.
+A test written after the fix tends to assert what the code now does rather than what the
+bug was, and it never demonstrates that it would have caught anything. Then make it pass,
+then `just check`.
+
+This holds for bug fixes above all: the test is the bug report. If you cannot write a test
+that fails before the change, say so and say why — that is a real finding about the
+codebase, not a reason to skip ahead.
+
+### Never let `any()` stand in for the contract under test
+
+```kotlin
+// Passes whatever box the ViewModel computes — asserts nothing about it.
+every { repo.observeInBounds(any(), any(), any(), any(), any(), any(), any()) }
+```
+
+Five tests stubbed `observeInBounds` exactly that way, so nothing noticed that the map
+queried the viewport as an exact box and dropped every restaurant whose circle overlapped
+a screen edge (`6f99e82`). `any()` is fine for arguments a test genuinely does not care
+about; for the ones it does, match on the value or capture it:
+
+```kotlin
+val minLat = slot<Double>()
+every { repo.observeInBounds(capture(minLat), any(), any(), any(), any(), any(), any()) } returns flowOf(emptyList())
+// …
+assertEquals(49.8, minLat.captured, 1e-9)
+```
+
+Setup-block stubs are the usual culprit: a `@Before` that relaxes every argument silently
+disarms every test in the class.
+
+### Where a JVM test cannot reach
+
+`ui/map/MapScreen.kt` has no test coverage and cannot easily get any — it is MapLibre view
+code, and the circle radii that caused the bug above live there in `addCustomLayers`. The
+seam between it and `MapViewModel` is where bugs hide, so when a change lands in the view
+layer, pin the behaviour in the layer below it where you can (the query box, the state
+flow), and record in the commit message what you verified on a device or emulator, with
+the API level. `fix(map): use MapLibre's OpenGL variant` (`416cc3e`) is the pattern.
+
 ## Testing patterns
 
 ### What to mock vs what to instantiate
