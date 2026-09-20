@@ -21,8 +21,9 @@
   case outside the regions the guide covers
 - Fix restaurants missing from the edges of the map. The viewport was queried as an exact
   box, so a restaurant whose centre fell just outside it was dropped even though its
-  circle overlapped the screen. The query box is now wider than the camera, which also
-  means a short pan lands on pins that are already loaded
+  circle overlapped the screen. The query box is now wider than the camera — by enough to
+  clear the widest pin at Android's narrowest split-screen width — which also means a short
+  pan lands on pins that are already loaded
 - Fix Near Me reaching further north than east. It searched ±0.5° on both axes, but a
   degree of longitude is only 111km × cos(latitude) — 35km in London, 24km in Reykjavik —
   so a restaurant 40km due east could be left out of a list sorted by true distance while

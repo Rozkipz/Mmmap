@@ -50,14 +50,18 @@ import kotlin.math.abs
 
 private const val LOCATE_TIMEOUT_MS = 60_000L
 
-// Restaurants are drawn as circles — 9-14px by award, and 26px for the visited glow — so
-// one whose centre sits just outside the viewport still owes the edge of the screen a
-// sliver of ink. Querying the exact visible region drops those rows, and the circles are
-// simply missing along all four edges until you pan far enough to bring the centre into
-// view. Query a slightly larger box than the camera shows so they stay in the source.
-// A tenth of the span is several times the widest circle on the narrowest axis, and it
+// Restaurants are drawn as circles — 9-14 by award, 26 for the visited glow — so one whose
+// centre sits just outside the viewport still owes the edge of the screen a sliver of ink.
+// Querying the exact visible region drops those rows, and the circles are simply missing
+// along all four edges until you pan far enough to bring the centre into view.
+//
+// Those radii are style units, which MapLibre scales by pixelRatio (MapView.getPixelRatio
+// returns displayMetrics.density), so they are dp — NOT physical pixels. The margin has to
+// clear 26dp on the narrowest window the app can be given, which is Android's 220dp
+// split-screen minimum: 26/220 = 11.8%. A tenth would be 22dp there and clip the glow all
+// over again. Fifteen percent leaves 33dp at that width and 54dp on a normal phone, and
 // also means a short pan lands on restaurants that are already loaded.
-private const val VIEWPORT_QUERY_MARGIN = 0.1
+private const val VIEWPORT_QUERY_MARGIN = 0.15
 private val PrettyJson = Json { prettyPrint = true }
 
 data class MapBounds(

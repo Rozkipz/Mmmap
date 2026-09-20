@@ -106,11 +106,15 @@ class MapViewModelTest {
     }
 
     @Test fun queryBoxClearsTheCameraByAtLeastTheWidestCircle() = runTest {
-        // The requirement, not the constant: the widest mark drawn is the 26px visited glow
-        // (MapScreen.addCustomLayers), so on a ~1080px viewport the query box must reach at
-        // least 26/1080 of the span past every edge or that glow is clipped. Retuning
-        // VIEWPORT_QUERY_MARGIN must leave this green; shrinking it towards zero must not.
-        val requiredFraction = 26.0 / 1080.0
+        // The requirement, not the constant. The widest mark drawn is the visited glow at
+        // radius 26 (MapScreen.addCustomLayers) — style units, which MapLibre scales by
+        // pixelRatio, so dp rather than physical pixels. The box must clear that on the
+        // narrowest window the app can be given: Android's 220dp split-screen minimum.
+        // Retuning VIEWPORT_QUERY_MARGIN upward must leave this green; dropping it back to
+        // a tenth must not, because a tenth of 220dp is 22dp and clips the glow.
+        val narrowestWindowDp = 220.0
+        val widestMarkDp = 26.0
+        val requiredFraction = widestMarkDp / narrowestWindowDp
         val minLat = slot<Double>()
         val maxLat = slot<Double>()
         val minLon = slot<Double>()
