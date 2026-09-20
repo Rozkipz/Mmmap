@@ -92,12 +92,17 @@ fdroid lint app.mmmap
 Run from inside the fdroiddata clone — uses your host JDK 17 + Android SDK:
 
 ```sh
+# all four ABI blocks
 fdroid build --no-tarball --verbose app.mmmap
+
+# or just one, by versionCode
+fdroid build --no-tarball --verbose app.mmmap:105001
 ```
 
-This clones Mmmap at the `v1.0` tag into `build/app.mmmap/`, runs
-`./gradlew assembleRelease -PversionName=1.0 -PversionCode=10000`,
-and validates the output APK. Fix any build failures before submitting.
+This clones Mmmap at the commit pinned in each `Builds:` block into
+`build/app.mmmap/` and runs one `./gradlew assembleRelease` per block, e.g.
+`-PversionName=1.5 -PversionCode=105001 -PabiFilter=armeabi-v7a`, validating
+each output APK. Fix any build failures before submitting.
 
 > Note: `--on-server` is for use inside F-Droid's build farm only
 > (it tries to lock the host root account). Don't pass it for local
@@ -134,8 +139,9 @@ AllowedAPKSigningKeys is set so F-Droid can verify the byte-match and serve
 the developer-signed APK.
 
 ### Build verification
-Tested with: JDK 17, AGP 9.2.1, Android SDK platform-36.
-./gradlew assembleRelease -PversionName=1.0 -PversionCode=10000
+Tested with: JDK 17, AGP 9.2.1, Android SDK platform-36, NDK r28c.
+One build block per ABI (armeabi-v7a, arm64-v8a, x86, x86_64); each reproduces
+byte-for-byte against the correspondingly-named APK on the GitHub Release.
 ```
 
 ---
@@ -203,6 +209,21 @@ Three things must stay in sync, or F-Droid fails the build with
 
 The ordering `armeabi-v7a < arm64-v8a < x86 < x86_64` is mandated by F-Droid so clients
 resolve the right variant for their device.
+
+Every build block must also carry `ndk: r28c`. F-Droid provisions an NDK only when the
+recipe asks for one; without it AGP silently skips stripping the prebuilt `.so` files that
+ship inside AARs, and the build stops reproducing on a single file:
+
+```
+lib/<abi>/libdatastore_shared_counter.so
+  ours   5916 bytes, stripped
+  fdroid 8432 bytes, NOT stripped
+```
+
+This has regressed once already — pinned in `7cded41`, then dropped by `03b8190` when
+`Builds:` was split into four blocks. It only surfaces ~25 minutes into the reproducible
+job, or as a rejected merge request, so `verify-fdroid.yml` asserts `ndk:` pins == build
+blocks in the fast metadata job.
 
 Note `fdroid rewritemeta` **strips comments**, and `verify-fdroid.yml` asserts it is a no-op —
 so keep `fdroid/app.mmmap.yml` free of comments and in canonical form.
