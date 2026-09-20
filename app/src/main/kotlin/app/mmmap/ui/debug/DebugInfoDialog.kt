@@ -35,7 +35,7 @@ fun DebugInfoDialog(state: DebugState, onDismiss: () -> Unit, onForceRefresh: ()
             ) {
                 Section("Database")
                 DiagRow("Restaurants stored", state.dbRestaurantCount.toString())
-                DiagRow("In current viewport", state.viewportCount.toString())
+                DiagRow("Loaded (viewport + margin)", state.viewportCount.toString())
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 Section("Sync")

@@ -8,8 +8,10 @@ import androidx.core.content.ContextCompat
 import app.mmmap.data.repository.RestaurantRepository
 import app.mmmap.domain.model.Distinction
 import app.mmmap.domain.model.Restaurant
+import app.mmmap.util.haversineKm
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import kotlinx.coroutines.Dispatchers
@@ -93,6 +95,52 @@ class NearbyViewModelTest {
         advanceUntilIdle()
 
         assertFalse(vm.locationMissing.value)
+    }
+
+    @Test fun boxReachesAsFarEastAsItDoesNorth() = runTest {
+        // A degree of longitude shrinks with latitude, so a box of ±0.5° on both axes is
+        // not a distance — it is a rectangle that narrows the further from the equator you
+        // are. The list it feeds is sorted by true haversine distance, so the two reaches
+        // have to match or "nearest" silently means "nearest, if it isn't due east".
+        val lat = 64.15 // Reykjavik: a degree of longitude is 44% of one at the equator
+        val lon = -21.94
+        every { locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) } returns
+            fakeLocation(lat, lon)
+        val maxLat = slot<Double>()
+        val maxLon = slot<Double>()
+        every {
+            repo.observeInBounds(any(), capture(maxLat), any(), capture(maxLon), any(), any(), any())
+        } returns flowOf(emptyList())
+
+        vm.load()
+        advanceUntilIdle()
+
+        val northKm = haversineKm(lat, lon, maxLat.captured, lon).toDouble()
+        val eastKm = haversineKm(lat, lon, lat, maxLon.captured).toDouble()
+        assertEquals("east reach $eastKm km vs north reach $northKm km", northKm, eastKm, 0.5)
+    }
+
+    @Test fun boxStaysWithinValidCoordinatesNearThePole() = runTest {
+        every { locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) } returns
+            fakeLocation(89.9, 0.0)
+        val minLat = slot<Double>()
+        val maxLat = slot<Double>()
+        val minLon = slot<Double>()
+        val maxLon = slot<Double>()
+        every {
+            repo.observeInBounds(
+                capture(minLat), capture(maxLat), capture(minLon), capture(maxLon),
+                any(), any(), any(),
+            )
+        } returns flowOf(emptyList())
+
+        vm.load()
+        advanceUntilIdle()
+
+        assertTrue("minLat ${minLat.captured}", minLat.captured >= -90.0)
+        assertTrue("maxLat ${maxLat.captured}", maxLat.captured <= 90.0)
+        assertTrue("minLon ${minLon.captured}", minLon.captured >= -180.0)
+        assertTrue("maxLon ${maxLon.captured}", maxLon.captured <= 180.0)
     }
 
     @Test fun withLocation_nearbyPopulated() = runTest {
