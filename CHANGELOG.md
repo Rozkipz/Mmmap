@@ -1,7 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [1.6]
 
+- Fix the app dying on launch with `No Vulkan compatible GPU found` on devices without
+  Vulkan. MapLibre's default artifact prefers the Vulkan renderer and has no fallback;
+  Vulkan is optional below API 29, so every Android 8/9 device without it was affected.
+  Switched to the OpenGL ES variant, which all supported devices have
+- Fix a crash on the first location update on Android 8.0–9.0 (`AbstractMethodError` on
+  `LocationListener.onStatusChanged`, which only gained a default implementation in API 29)
+- Fix Near Me rendering a blank page instead of a message when nothing is in range
 - Ship the bundled restaurant database gzipped (~20 MB → ~8 MB), inflating it on first
   open. Cuts roughly 12 MB from every APK
 - Record the bundled dataset's upstream revision and seed it on first launch, so a fresh

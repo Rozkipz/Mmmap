@@ -1,1 +1,0 @@
-Initial release. Browse MICHELIN Guide restaurants on a map, filter by distinction, tap for details.

@@ -1,0 +1,1 @@
+Fixes a crash on launch on devices without Vulkan (Android 8/9), and a crash on the first location update on Android 8.0-9.0. The bundled restaurant database now ships gzipped — about 12 MB off the download — and a fresh install no longer re-downloads it.

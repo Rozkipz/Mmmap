@@ -47,8 +47,8 @@ android {
         // Hardcoded so fdroidserver's regex parser can extract the version at each
         // tagged commit (its checkupdates step doesn't read gradle.properties or
         // evaluate findProperty). Bumped by `just bump-version <X.Y>`.
-        versionCode = 10500
-        versionName = "1.5"
+        versionCode = 10600
+        versionName = "1.6"
         // -PversionCode / -PversionName still override (ad-hoc local builds);
         // the release workflow passes these but they match the hardcoded values.
         (findProperty("versionCode") as? String)?.toInt()?.let { versionCode = it }
