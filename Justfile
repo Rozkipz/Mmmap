@@ -179,7 +179,7 @@ _sync-fdroid-versions version code:
     set -euo pipefail
     YML=fdroid/app.mmmap.yml
     awk -v v="{{version}}" -v b="{{code}}" 'BEGIN { q = sprintf("%c", 39) }
-        /^    versionName: /      { print "    versionName: " q v q; next }
+        /^  - versionName: /      { print "  - versionName: " q v q; next }
         /^    versionCode: /      { n++; print "    versionCode: " b * 10 + n; next }
         /^CurrentVersion: /       { print "CurrentVersion: " q v q; next }
         /^CurrentVersionCode: /   { print "CurrentVersionCode: " b * 10 + 4; next }
@@ -210,7 +210,7 @@ release version:
     just clean
     just check
     just assemble-release {{version}}
-    git add gradle.properties
+    git add app/build.gradle.kts fdroid/app.mmmap.yml gradle.properties
     if ! git diff --cached --quiet; then
         git commit -m "chore(release): v{{version}}"
         git push origin HEAD
