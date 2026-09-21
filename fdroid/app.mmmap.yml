@@ -19,7 +19,7 @@ Binaries: https://github.com/Rozkipz/Mmmap/releases/download/v%v/Mmmap-%c.apk
 Builds:
   - versionName: '1.6'
     versionCode: 106001
-    commit: f273027cbe885cdb39db47678c70c59e9d8519d1
+    commit: 48aa4031f225fd087a99347f10ca1f313d0f991b
     subdir: app
     gradle:
       - yes
@@ -29,7 +29,7 @@ Builds:
 
   - versionName: '1.6'
     versionCode: 106002
-    commit: f273027cbe885cdb39db47678c70c59e9d8519d1
+    commit: 48aa4031f225fd087a99347f10ca1f313d0f991b
     subdir: app
     gradle:
       - yes
@@ -39,7 +39,7 @@ Builds:
 
   - versionName: '1.6'
     versionCode: 106003
-    commit: f273027cbe885cdb39db47678c70c59e9d8519d1
+    commit: 48aa4031f225fd087a99347f10ca1f313d0f991b
     subdir: app
     gradle:
       - yes
@@ -49,7 +49,7 @@ Builds:
 
   - versionName: '1.6'
     versionCode: 106004
-    commit: f273027cbe885cdb39db47678c70c59e9d8519d1
+    commit: 48aa4031f225fd087a99347f10ca1f313d0f991b
     subdir: app
     gradle:
       - yes
